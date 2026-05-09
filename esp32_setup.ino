@@ -17,7 +17,7 @@ FirebaseJson json;
 FirebaseStream stream;
 
 // ================= WIFI (EDIT THESE) =================
-const char* WIFI_SSID = "Bounanotte123";
+const char* WIFI_SSID = "Bounanotte123(2.4G)";
 const char* WIFI_PASSWORD = "zT7$kP9!wX@2vLmQ#f3RGv9z!LmQ8^rT@2Xp$d7*BfJw3&eK4Nh";
 
 // ================= PINS =================
@@ -91,13 +91,25 @@ void moveLid(int dir) {
   lidServo.write(STOP);     
 }
 
+bool signupOK = false;
+
 void firebaseInitAndStream() {
   config.api_key = API_KEY;
   config.database_url = DATABASE_URL;
 
+  if(Firebase.signUp(&config, &auth, "", "")){
+    Serial.println("signup OK");
+    signupOK = true;
+  }else{
+    Serial.printf("%s\n", config.signer.signupError.message.c_str());
+  }
+
+  config.token_status_callback = tokenStatusCallback;
+
   // For RTDB, no user/password required if rules allow it.
-  Firebase.reconnectWiFi(true);
+ 
   Firebase.begin(&config, &auth);
+  Firebase.reconnectWiFi(true);
 
   // Stream-based callbacks are not available in this Arduino Firebase client version.
   // We'll poll trashbin/override in loop() instead.
@@ -106,14 +118,10 @@ void firebaseInitAndStream() {
   Serial.println("Firebase ready; polling trashbin/override in loop().");
 }
 
-void setup() {
-  // 1) Serial
-  Serial.begin(115200);
-
-  // 2) WiFi connect
+void connectToWifi(){
+  Serial.print("Connecting to Wifi");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  Serial.print("Connecting WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print('.');
@@ -121,6 +129,15 @@ void setup() {
   Serial.println();
   Serial.print("Connected: ");
   Serial.println(WiFi.localIP());
+}
+
+void setup() {
+  // 1) Serial
+  Serial.begin(115200);
+
+  // 2) WiFi connect
+  connectToWifi();
+  
 
   // 3) Firebase
   firebaseInitAndStream();
@@ -144,14 +161,20 @@ void setup() {
 }
 
 void loop() {
-  // 0) Poll override command
-  if (!overrideInProgress) {
+  // 0) Poll override command (rate-limited)
+  static unsigned long lastOverridePoll = 0;
+  const unsigned long OVERRIDE_POLL_MS = 250;
+
+  if (!overrideInProgress && millis() - lastOverridePoll >= OVERRIDE_POLL_MS) {
+    lastOverridePoll = millis();
+
     if (Firebase.RTDB.getString(&fbdo, OVERRIDE_PATH)) {
       String val = fbdo.stringData();
       if (val == "open") {
         overrideInProgress = true;
         lidOpen = true;
         moveLid(OPEN_DIR);
+
 
         // bump lidOpenCount
         int current = 0;
