@@ -1,133 +1,131 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Trashbin Monitor</title>
-    <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
-    <header class="app-header">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true"></div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Trashbin Monitor</title>
 
-        <div class="brand-info">
-          <h1 class="app-title">Trashbin Monitor</h1>
-   
-        </div>
+  <link rel="stylesheet" href="style.css" />
+</head>
 
-        <div class="theme-toggle">
-          <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">
-            <span class="theme-icon" aria-hidden="true">☾</span>
-            <span class="theme-text">Dark</span>
-          </button>
-        </div>
-      </div>
-    </header>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <h1>Trashbin Monitor</h1>
+      <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">
+        <span class="theme-icon" aria-hidden="true">☾</span>
+        <span class="theme-text">Dark</span>
+      </button>
+    </div>
+  </header>
 
-    <script>
-      (function () {
-        const toggleBtn = document.getElementById('themeToggle');
-        if (!toggleBtn) return;
+  <script>
+    (function () {
+      const toggleBtn = document.getElementById('themeToggle');
+      if (!toggleBtn) return;
 
-        const getStored = () => {
-          try { return localStorage.getItem('theme'); } catch { return null; }
-        };
-        const setStored = (t) => {
-          try { localStorage.setItem('theme', t); } catch {}
-        };
+      const icon = toggleBtn.querySelector('.theme-icon');
+      const text = toggleBtn.querySelector('.theme-text');
 
-        const applyTheme = (theme) => {
-          const root = document.documentElement;
-          root.setAttribute('data-theme', theme);
-          const icon = toggleBtn.querySelector('.theme-icon');
-          const text = toggleBtn.querySelector('.theme-text');
-          if (theme === 'dark') {
-            if (icon) icon.textContent = '☀';
-            if (text) text.textContent = 'Light';
-          } else {
-            if (icon) icon.textContent = '☾';
-            if (text) text.textContent = 'Dark';
-          }
-        };
+      const getStored = () => {
+        try { return localStorage.getItem('theme'); } catch { return null; }
+      };
 
-        const init = () => {
-          const stored = getStored();
-          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-          const theme = stored || (prefersDark ? 'dark' : 'light');
-          applyTheme(theme);
-        };
+      const setStored = (t) => {
+        try { localStorage.setItem('theme', t); } catch {}
+      };
 
-        toggleBtn.addEventListener('click', () => {
-          const current = document.documentElement.getAttribute('data-theme') || 'light';
-          const next = current === 'dark' ? 'light' : 'dark';
-          applyTheme(next);
-          setStored(next);
-        });
+      const applyTheme = (theme) => {
+        document.documentElement.setAttribute('data-theme', theme);
 
-        init();
-      })();
-    </script>
+        if (theme === 'dark') {
+          if (icon) icon.textContent = '☾';
+          if (text) text.textContent = 'Dark';
+        } else {
+          if (icon) icon.textContent = '☀';
+          if (text) text.textContent = 'Light';
+        }
+      };
 
-    <main class="container">
-      <div class="grid">
-        <!-- Lid Counter -->
-        <div class="card">
-        <h2>Lid Open Counter</h2>
-        <div class="big-number" id="lidCount">0</div>
-      </div>
+      const init = () => {
+        const stored = getStored();
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        applyTheme(theme);
+      };
 
-      <!-- Bin Level -->
-      <div class="card">
-        <h2>Trash Bin Level</h2>
+      toggleBtn.addEventListener('click', () => {
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
+        const next = current === 'dark' ? 'light' : 'dark';
+        applyTheme(next);
+        setStored(next);
+      });
 
-        <div class="gauge-container">
-          <div class="gauge-fill" id="binGauge"></div>
-        </div>
+      init();
+    })();
+  </script>
 
-        <div class="level-text" id="binLevelText">0%</div>
-      </div>
+  <main class="container">
 
-      <!-- Controls -->
-      <div class="card">
-        <h2>Lid Override</h2>
+    <!-- Connection Status -->
+    <div class="card">
+      <h2>Status</h2>
+      <p id="connectionStatus">Connecting...</p>
+    </div>
 
-        <div class="status-box">
-          <p>Lid Status</p>
-          <h3 id="lidStatus">closed</h3>
-        </div>
+    <!-- Lid Counter -->
+    <div class="card">
+      <h2>Lid Open Counter</h2>
+      <div class="big-number" id="lidCount">0</div>
+    </div>
 
-        <div class="status-box">
-          <p>Override Command</p>
-          <h3 id="overrideStatus">none</h3>
-        </div>
+    <!-- Bin Level -->
+    <div class="card">
+      <h2>Trash Bin Level</h2>
 
-        <button class="open-btn" onclick="openLid()">
-          Open Lid
-        </button>
-
-        <button class="close-btn" onclick="closeLid()">
-          Close Lid
-        </button>
-      </div>
+      <div class="gauge-container">
+        <div class="gauge-fill" id="binGauge"></div>
       </div>
 
-    <div class="card database">
-      <h2>Firebase Database Structure</h2>
+      <div class="level-text" id="binLevelText">0%</div>
+    </div>
 
+    <!-- Controls -->
+    <div class="card">
+      <h2>Lid Override</h2>
+
+      <div class="status-box">
+        <p>Lid Status</p>
+        <h3 id="lidStatus">closed</h3>
+      </div>
+
+      <div class="status-box">
+        <p>Override Command</p>
+        <h3 id="overrideStatus">none</h3>
+      </div>
+
+      <button onclick="openLid()">Open Lid</button>
+      <button onclick="closeLid()">Close Lid</button>
+    </div>
+
+    <!-- Debug structure -->
+    <div class="card">
+      <h2>Firebase Structure</h2>
       <pre>
 {
   "trashbin": {
-    "lidOpenCount": 20,
-    "binLevel": 75,
+    "lidOpenCount": 0,
+    "binLevel": 0,
     "lidStatus": "closed",
     "override": "none"
   }
 }
       </pre>
     </div>
-    </main>
 
-    <script src="app.js"></script>
-  </body>
+  </main>
+
+  <!-- IMPORTANT: must be module -->
+  <script type="module" src="app.js"></script>
+</body>
 </html>
