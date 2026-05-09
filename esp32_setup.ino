@@ -67,9 +67,14 @@ const int FULL_TRIGGER_COUNT = 5;
 unsigned long lastBinLevelPush = 0;
 const unsigned long BIN_LEVEL_PUSH_INTERVAL_MS = 500;
 
-// Lid open counter sync
+// Lid open counter sync (increment when lid LED steady-on)
 unsigned long lastFirebasePush = 0;
 const unsigned long FIREBASE_PUSH_INTERVAL_MS = 1000;
+
+// Track lid LED transitions (exclude blink mode)
+bool lastLidLedSteadyOn = false;
+unsigned long lidLedLastChangeMs = 0;
+
 
 int lastSeenOverride = -1; // not used, placeholder if you want debounce later
 
@@ -261,12 +266,14 @@ void loop() {
   if (emptyCount >= FULL_TRIGGER_COUNT) binFull = false;
 
   // 3. LED FEEDBACK
+  bool ledSteadyOn = false;
   if (binFull) {
     if (millis() - lastBlink >= 100) {
       lastBlink = millis();
       digitalWrite(ledPin, !digitalRead(ledPin));
     }
   } else if (personDetected) {
+    ledSteadyOn = true;
     digitalWrite(ledPin, HIGH);
   } else if (spraying) {
     if (millis() - lastBlink >= 300) {
@@ -276,6 +283,20 @@ void loop() {
   } else {
     digitalWrite(ledPin, LOW);
   }
+
+  // Increment lidOpenCount whenever the blue LED turns on steadily (not blinking)
+  if (ledSteadyOn && !lastLidLedSteadyOn) {
+    if (millis() - lidLedLastChangeMs > 1000) {
+      lidLedLastChangeMs = millis();
+      int current = 0;
+      if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
+        current = fbdo.intData();
+      }
+      current++;
+      Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
+    }
+  }
+  lastLidLedSteadyOn = ledSteadyOn;
 
   // 4. CORE BEHAVIOR
   
