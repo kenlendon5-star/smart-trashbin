@@ -1,6 +1,12 @@
 // ===== FIREBASE IMPORT (MODULAR) =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import {
+  getDatabase,
+  ref,
+  onValue,
+  set
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
 
 // ===== CONFIG =====
 const firebaseConfig = {
@@ -24,10 +30,10 @@ const lidStatus = document.getElementById("lidStatus");
 const overrideStatus = document.getElementById("overrideStatus");
 const connectionStatus = document.getElementById("connectionStatus");
 
-const trashRef = db.ref("trashbin");
+const trashRef = ref(db, "trashbin");
 
 // Real-time listener
-trashRef.on("value", (snapshot) => {
+onValue(trashRef, (snapshot) => {
   const data = snapshot.val();
 
   if (!data) {
@@ -58,8 +64,7 @@ trashRef.on("value", (snapshot) => {
 
 // Open lid command
 function openLid() {
-  db.ref("trashbin/override")
-    .set("open")
+  set(ref(db, "trashbin/override"), "open")
     .then(() => {
       overrideStatus.innerText = "open";
     })
@@ -71,8 +76,7 @@ function openLid() {
 
 // Close lid command
 function closeLid() {
-  db.ref("trashbin/override")
-    .set("close")
+  set(ref(db, "trashbin/override"), "close")
     .then(() => {
       overrideStatus.innerText = "close";
     })
@@ -81,6 +85,7 @@ function closeLid() {
       alert("Failed to send close command");
     });
 }
+
 
 // Runtime tests
 console.assert(typeof openLid === "function", "openLid function missing");
