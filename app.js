@@ -1,4 +1,4 @@
-// ===== FIREBASE IMPORT (MODULAR) =====
+// ===== FIREBASE IMPORTS =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import {
   getDatabase,
@@ -7,88 +7,91 @@ import {
   set
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
-
-// ===== CONFIG =====
+// ===== FIREBASE CONFIG =====
 const firebaseConfig = {
   apiKey: "AIzaSyA-lRaDMrUtaONmTth7YZXOCj0qWhqLKwQ",
   authDomain: "trashbin-esp32.firebaseapp.com",
-  databaseURL: "https://trashbin-esp32-default-rtdb.asia-southeast1.firebasedatabase.app",
+  databaseURL:
+    "https://trashbin-esp32-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "trashbin-esp32",
   storageBucket: "trashbin-esp32.firebasestorage.app",
   messagingSenderId: "779021486618",
   appId: "1:779021486618:web:800ca0ce05d5c8bd24dfa3"
 };
 
-// Initialize Firebase (modular)
+// ===== INIT FIREBASE =====
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-const lidCount = document.getElementById("lidCount");
-const binLevelText = document.getElementById("binLevelText");
-const binGauge = document.getElementById("binGauge");
-const lidStatus = document.getElementById("lidStatus");
-const overrideStatus = document.getElementById("overrideStatus");
-const connectionStatus = document.getElementById("connectionStatus");
+// ===== WAIT FOR DOM =====
+window.addEventListener("DOMContentLoaded", () => {
 
-const trashRef = ref(db, "trashbin");
+  // ===== ELEMENTS =====
+  const lidCount = document.getElementById("lidCount");
+  const binLevelText = document.getElementById("binLevelText");
+  const binGauge = document.getElementById("binGauge");
+  const lidStatus = document.getElementById("lidStatus");
+  const overrideStatus = document.getElementById("overrideStatus");
+  const connectionStatus = document.getElementById("connectionStatus");
 
-// Real-time listener
-onValue(trashRef, (snapshot) => {
-  const data = snapshot.val();
+  // ===== DATABASE REF =====
+  const trashRef = ref(db, "trashbin");
 
-  if (!data) {
-    connectionStatus.innerText = "Connected, but no data found.";
-    return;
-  }
+  // ===== REALTIME LISTENER =====
+  onValue(trashRef, (snapshot) => {
+    const data = snapshot.val();
 
-  connectionStatus.innerText = "Firebase Connected Successfully";
+    if (!data) {
+      connectionStatus.textContent = "No data found";
+      return;
+    }
 
-  lidCount.innerText = data.lidOpenCount || 0;
+    connectionStatus.textContent = "Connected to Firebase ✔";
 
-  const level = data.binLevel || 0;
-  binLevelText.innerText = level + "%";
+    // Lid counter
+    lidCount.textContent = data.lidOpenCount ?? 0;
 
-  lidStatus.innerText = data.lidStatus || "closed";
-  overrideStatus.innerText = data.override || "none";
+    // Bin level
+    const level = data.binLevel ?? 0;
+    binLevelText.textContent = level + "%";
+    binGauge.style.width = level + "%";
 
-  binGauge.style.width = level + "%";
+    // Color logic
+    if (level < 40) {
+      binGauge.style.background = "#22c55e";
+    } else if (level < 75) {
+      binGauge.style.background = "#eab308";
+    } else {
+      binGauge.style.background = "#ef4444";
+    }
 
-  if (level < 40) {
-    binGauge.style.background = "#22c55e";
-  } else if (level < 75) {
-    binGauge.style.background = "#eab308";
-  } else {
-    binGauge.style.background = "#ef4444";
-  }
+    // Status
+    lidStatus.textContent = data.lidStatus ?? "closed";
+    overrideStatus.textContent = data.override ?? "none";
+  });
+
+  // ===== OPEN LID =====
+  window.openLid = function () {
+    overrideStatus.textContent = "open";
+
+    set(ref(db, "trashbin/override"), "open")
+      .then(() => console.log("Open command sent"))
+      .catch((err) => {
+        console.error(err);
+        overrideStatus.textContent = "error";
+      });
+  };
+
+  // ===== CLOSE LID =====
+  window.closeLid = function () {
+    overrideStatus.textContent = "close";
+
+    set(ref(db, "trashbin/override"), "close")
+      .then(() => console.log("Close command sent"))
+      .catch((err) => {
+        console.error(err);
+        overrideStatus.textContent = "error";
+      });
+  };
+
 });
-
-// Open lid command
-function openLid() {
-  set(ref(db, "trashbin/override"), "open")
-    .then(() => {
-      overrideStatus.innerText = "open";
-    })
-    .catch((error) => {
-      console.error(error);
-      alert("Failed to send open command");
-    });
-}
-
-// Close lid command
-function closeLid() {
-  set(ref(db, "trashbin/override"), "close")
-    .then(() => {
-      overrideStatus.innerText = "close";
-    })
-    .catch((error) => {
-      console.error(error);
-      alert("Failed to send close command");
-    });
-}
-
-
-// Runtime tests
-console.assert(typeof openLid === "function", "openLid function missing");
-console.assert(typeof closeLid === "function", "closeLid function missing");
-console.assert(binGauge !== null, "Gauge element missing");
-console.assert(lidCount !== null, "Lid count element missing");
