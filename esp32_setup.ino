@@ -178,22 +178,24 @@ void loop() {
     if (Firebase.RTDB.getString(&fbdo, OVERRIDE_PATH)) {
       String val = fbdo.stringData();
       if (val == "open") {
-        overrideInProgress = true;
-        lidOpen = true;
-        moveLid(OPEN_DIR);
+        // Only count when we actually transition from closed->open
+        if (!lidOpen) {
+          lidOpen = true;
+          moveLid(OPEN_DIR);
 
-
-        // bump lidOpenCount
-        int current = 0;
-        if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
-          current = fbdo.intData();
+          int current = 0;
+          if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
+            current = fbdo.intData();
+          }
+          current++;
+          Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
+        } else {
+          // Already open; just ensure override is cleared
+          // (prevents repeated increments when the command is polled)
         }
-        current++;
-        Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
+
         Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "open");
         Firebase.RTDB.setString(&fbdo, OVERRIDE_PATH, "none");
-
-        overrideInProgress = false;
       } else if (val == "close") {
         overrideInProgress = true;
         lidOpen = false;
