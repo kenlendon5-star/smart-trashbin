@@ -1,8 +1,6 @@
-// ===== FIREBASE IMPORT =====
+// ===== FIREBASE IMPORT (MODULAR) =====
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
 import { getDatabase, ref, onValue, set } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
 
 // ===== CONFIG =====
 const firebaseConfig = {
@@ -15,10 +13,9 @@ const firebaseConfig = {
   appId: "1:779021486618:web:800ca0ce05d5c8bd24dfa3"
 };
 
-// Initialize Firebase
-firebase.initializeApp(firebaseConfig);
-
-const db = firebase.database();
+// Initialize Firebase (modular)
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
 const lidCount = document.getElementById("lidCount");
 const binLevelText = document.getElementById("binLevelText");

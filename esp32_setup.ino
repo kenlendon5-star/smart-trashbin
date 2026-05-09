@@ -63,6 +63,10 @@ int fullCount = 0;
 int emptyCount = 0;
 const int FULL_TRIGGER_COUNT = 5;
 
+// Bin level update
+unsigned long lastBinLevelPush = 0;
+const unsigned long BIN_LEVEL_PUSH_INTERVAL_MS = 500;
+
 // Lid open counter sync
 unsigned long lastFirebasePush = 0;
 const unsigned long FIREBASE_PUSH_INTERVAL_MS = 1000;
@@ -115,6 +119,9 @@ void firebaseInitAndStream() {
   // We'll poll trashbin/override in loop() instead.
 
   Firebase.RTDB.setString(&fbdo, OVERRIDE_PATH, "none");
+  Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", 0);
+  Firebase.RTDB.setInt(&fbdo, "trashbin/binLevel", 0);
+  Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "closed");
   Serial.println("Firebase ready; polling trashbin/override in loop().");
 }
 
@@ -203,6 +210,41 @@ void loop() {
   long fullDist = readDistance(trigPinFull, echoPinFull);
 
   personDetected = (dist <= TRIGGER_DISTANCE);
+
+  // Update binLevel for the web dashboard
+  // Map fullDist (10cm = full => 100%) to (20cm or more = empty => 0%)
+  // Clamp to [0..100]. Use 999 (out of range) as empty.
+  int levelPercent = 0;
+  if (fullDist >= 999) {
+    levelPercent = 0;
+  } else {
+    // progress increases as fullDist decreases
+    long span = (long)TRIGGER_DISTANCE - (long)FULL_DISTANCE;
+    if (span <= 0) span = 1;
+    long clamped = fullDist;
+    if (clamped < FULL_DISTANCE) clamped = FULL_DISTANCE;
+    if (clamped > TRIGGER_DISTANCE) clamped = TRIGGER_DISTANCE;
+
+    // 0..100 where fullDist==FULL_DISTANCE => 100, fullDist==TRIGGER_DISTANCE => 0
+    levelPercent = (int)(( (TRIGGER_DISTANCE - clamped) * 100L ) / span);
+    if (levelPercent < 0) levelPercent = 0;
+    if (levelPercent > 100) levelPercent = 100;
+  }
+
+  if (millis() - lastBinLevelPush >= BIN_LEVEL_PUSH_INTERVAL_MS) {
+    lastBinLevelPush = millis();
+    Firebase.RTDB.setInt(&fbdo, "trashbin/binLevel", levelPercent);
+  }
+
+  // Keep lid status synced for the web UI
+  // (avoid writing too frequently; only update when behavior changes is ideal,
+  // but this is simple and still rate-limited by our loop delay).
+  // lidOpen true => open else closed.
+  if (lidOpen) {
+    Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "open");
+  } else {
+    Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "closed");
+  }
 
   // 2. BIN FULL LOGIC
 
