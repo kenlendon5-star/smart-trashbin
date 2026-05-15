@@ -67,7 +67,10 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Status
     lidStatus.textContent = data.lidStatus ?? "closed";
+    // Firebase firmware clears override back to "none" after handling it.
+    // If you want to visualize manual override staying active, you'll need a new field.
     overrideStatus.textContent = data.override ?? "none";
+
   });
 
   // ===== OPEN LID =====

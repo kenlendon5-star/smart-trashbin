@@ -81,6 +81,12 @@ int lastSeenOverride = -1; // not used, placeholder if you want debounce later
 String lastOverrideValue = "";
 bool overrideInProgress = false;
 
+// Manual override: when user requests "open", we should not let sensor logic immediately close it.
+bool manualOverrideActive = false;
+unsigned long manualOverrideOpenedAtMs = 0;
+const unsigned long MANUAL_OVERRIDE_TIMEOUT_MS = 30000; // 30s; prevents staying open forever.
+
+
 // ================= SENSOR HELPER =================
 long readDistance(int tp, int ep) {
   digitalWrite(tp, LOW);
@@ -183,10 +189,15 @@ void loop() {
     if (Firebase.RTDB.getString(&fbdo, OVERRIDE_PATH)) {
       String val = fbdo.stringData();
       if (val == "open") {
+        // Manual open override: keep lid from auto-closing until timeout or explicit close.
+        manualOverrideActive = true;
+        manualOverrideOpenedAtMs = millis();
+
         // Only count when we actually transition from closed->open
         if (!lidOpen) {
           lidOpen = true;
           moveLid(OPEN_DIR);
+
 
           int current = 0;
           if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
@@ -203,12 +214,14 @@ void loop() {
         Firebase.RTDB.setString(&fbdo, OVERRIDE_PATH, "none");
       } else if (val == "close") {
         overrideInProgress = true;
+        manualOverrideActive = false;
         lidOpen = false;
         moveLid(CLOSE_DIR);
         Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "closed");
         Firebase.RTDB.setString(&fbdo, OVERRIDE_PATH, "none");
         overrideInProgress = false;
       }
+
     }
   }
 
@@ -217,6 +230,14 @@ void loop() {
   long fullDist = readDistance(trigPinFull, echoPinFull);
 
   personDetected = (dist <= TRIGGER_DISTANCE);
+
+  // If manual override is active, keep the lid open and suppress automatic closing.
+  if (manualOverrideActive) {
+    if (millis() - manualOverrideOpenedAtMs >= MANUAL_OVERRIDE_TIMEOUT_MS) {
+      manualOverrideActive = false;
+    }
+  }
+
 
   // Update binLevel for the web dashboard
   // Map fullDist (10cm = full => 100%) to (20cm or more = empty => 0%)
@@ -299,8 +320,14 @@ void loop() {
   lastLidLedSteadyOn = ledSteadyOn;
 
   // 4. CORE BEHAVIOR
-  
-  if (binFull) {
+
+  // If manual override is active, keep lid open and skip the automatic close/reopen logic.
+  if (manualOverrideActive && lidOpen) {
+    digitalWrite(relayPin, HIGH); // keep relay off (active LOW) during manual override
+    spraying = false;
+    waitingToSpray = false;
+  } else if (binFull) {
+
     if (lidOpen) {
       moveLid(CLOSE_DIR); // Reverse back
       lidOpen = false;

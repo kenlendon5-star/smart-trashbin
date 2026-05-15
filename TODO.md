@@ -1,10 +1,12 @@
-# Beautify Design - Task Progress
+# TODO
 
-## Plan Steps:
-- [x] Step 1: Overhaul web/style.css with modern eco-theme, responsive design, animations, shadows, buttons.
-- [x] Step 2: Update web/index.html with semantic HTML, Google Fonts, Font Awesome icons, better structure.
-- [ ] Step 3: Review web/app.js for any JS-related design enhancements (e.g., status classes).
-- [ ] Step 4: Test the beautified design (open web/index.html).
-- [ ] Step 5: Complete and demo.
+- [ ] Add manual override gate in `esp32_setup.ino` so lid override open does not immediately close due to sensor logic.
+- [ ] Implement manual override behavior:
+  - While manual override is active, skip the automatic “no personDetected -> close lid” logic.
+  - When manual override is explicitly closed (override command "close"), resume automatic control.
+- [ ] (Optional) Add a timeout for manual override (30s) if needed; otherwise keep open until explicit close.
+- [x] Add manual override gate in `esp32_setup.ino` so lid override open does not immediately close due to sensor logic.
+- [x] Ensure manual override remains open until explicit close or timeout (30s).
+- [ ] Rebuild/verify compile (if applicable) and re-test in real hardware.
 
-Current progress: Steps 1-3 complete (style.css, index.html, app.js enhanced with status classes). Next: Test.
+
