@@ -17,8 +17,9 @@ FirebaseJson json;
 FirebaseStream stream;
 
 // ================= WIFI (EDIT THESE) =================
-const char* WIFI_SSID = "Bounanotte123(2.4G)";
-const char* WIFI_PASSWORD = "zT7$kP9!wX@2vLmQ#f3RGv9z!LmQ8^rT@2Xp$d7*BfJw3&eK4Nh";
+const char* WIFI_SSID = "Regex";
+const char* WIFI_PASSWORD = "Regex314";
+
 
 // ================= PINS =================
 const int trigPin = 19;
@@ -34,6 +35,10 @@ const int TRIGGER_DISTANCE = 20;
 const int FULL_DISTANCE = 10;
 const int STOP = 90; // Neutral (No movement)
 
+// Lid close timing
+const unsigned long LID_CLOSE_DELAY_MS = 600; // require no-person for this long before closing
+
+
 // REVERSED DIRECTIONS
 const int OPEN_DIR = 0;     // Clockwise rotation to OPEN
 const int CLOSE_DIR = 180;  // Counter-Clockwise rotation to CLOSE
@@ -48,10 +53,22 @@ const unsigned long SPRAY_DURATION = 1000;
 const char* TRASH_PATH = "trashbin";
 const char* OVERRIDE_PATH = "trashbin/override";
 
+// NOTE: ensure these debug flags exist at compile time (kept for future tuning)
+// bool lastSeenOverride = false;
+
+
 // ================= STATES =================
-bool personDetected = false;
+// NOTE: use a debounced/hysteresis version of the "person present" signal
+// to prevent the lid from getting stuck open due to brief ultrasonic glitches.
+bool personDetected = false; // stable/debounced value used by lid logic
 bool lidOpen = false;
 bool binFull = false;
+
+// Person detection tuning
+const long PERSON_LOST_DELAY_MS = 1500; // must be absent for this long before we allow closing
+// const long PERSON_PRESENT_MARGIN_CM = 2; // (unused) kept for future hysteresis tuning
+bool personDetectedRaw = false;
+unsigned long personLastSeenMs = 0;
 bool spraying = false;
 bool waitingToSpray = false;
 
@@ -65,18 +82,18 @@ const int FULL_TRIGGER_COUNT = 5;
 
 // Bin level update
 unsigned long lastBinLevelPush = 0;
-const unsigned long BIN_LEVEL_PUSH_INTERVAL_MS = 500;
+const unsigned long BIN_LEVEL_PUSH_INTERVAL_MS = 2000; // less write churn to Firebase
+const int BIN_LEVEL_DEADBAND = 3; // only push if change >= this amount
+int lastPushedBinLevel = -1;
 
-// Lid open counter sync (increment when lid LED steady-on)
-unsigned long lastFirebasePush = 0;
-const unsigned long FIREBASE_PUSH_INTERVAL_MS = 1000;
 
-// Track lid LED transitions (exclude blink mode)
-bool lastLidLedSteadyOn = false;
-unsigned long lidLedLastChangeMs = 0;
-
+// Lid open counter (count every time lid opens from closed -> open)
+bool lastLidOpenState = false;
+unsigned long lidOpenEdgeCooldownMs = 800; // debounce
+unsigned long lastLidOpenEdgeMs = 0;
 
 int lastSeenOverride = -1; // not used, placeholder if you want debounce later
+
 
 String lastOverrideValue = "";
 bool overrideInProgress = false;
@@ -86,8 +103,13 @@ bool manualOverrideActive = false;
 unsigned long manualOverrideOpenedAtMs = 0;
 const unsigned long MANUAL_OVERRIDE_TIMEOUT_MS = 30000; // 30s; prevents staying open forever.
 
+// auto-close helper: start close timer when no person detected
+bool closeTimerArmed = false;
+unsigned long closeTimerStartMs = 0;
+
 
 // ================= SENSOR HELPER =================
+
 long readDistance(int tp, int ep) {
   digitalWrite(tp, LOW);
   delayMicroseconds(2);
@@ -140,13 +162,24 @@ void connectToWifi(){
   Serial.print("Connecting to Wifi");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  while (WiFi.status() != WL_CONNECTED) {
+
+  // Don't block forever: allow the device to run sensors even if internet/Firebase is down.
+  const unsigned long WIFI_TIMEOUT_MS = 15000;
+  unsigned long start = millis();
+
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < WIFI_TIMEOUT_MS) {
     delay(500);
     Serial.print('.');
   }
-  Serial.println();
-  Serial.print("Connected: ");
-  Serial.println(WiFi.localIP());
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.print("Connected: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println();
+    Serial.println("WiFi not connected (continuing local control only)");
+  }
 }
 
 void setup() {
@@ -176,12 +209,24 @@ void setup() {
 
   lidOpen = false;
   binFull = false;
+  lastLidOpenState = false;
 }
 
 void loop() {
   // 0) Poll override command (rate-limited)
   static unsigned long lastOverridePoll = 0;
   const unsigned long OVERRIDE_POLL_MS = 250;
+
+  // Keep last pushed level initialized if first run
+  static bool initializedBinDeadband = false;
+  if (!initializedBinDeadband) {
+    lastPushedBinLevel = -1;
+    initializedBinDeadband = true;
+  }
+
+
+
+
 
   if (!overrideInProgress && millis() - lastOverridePoll >= OVERRIDE_POLL_MS) {
     lastOverridePoll = millis();
@@ -193,22 +238,25 @@ void loop() {
         manualOverrideActive = true;
         manualOverrideOpenedAtMs = millis();
 
-        // Only count when we actually transition from closed->open
+  // If currently closed, transition to open and count.
         if (!lidOpen) {
           lidOpen = true;
           moveLid(OPEN_DIR);
 
-
-          int current = 0;
-          if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
-            current = fbdo.intData();
+          // Count every closed -> open transition (debounced)
+          unsigned long nowMs = millis();
+          if (nowMs - lastLidOpenEdgeMs >= lidOpenEdgeCooldownMs) {
+            int current = 0;
+            if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
+              current = fbdo.intData();
+            }
+            current++;
+            Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
+            lastLidOpenEdgeMs = nowMs;
           }
-          current++;
-          Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
-        } else {
-          // Already open; just ensure override is cleared
-          // (prevents repeated increments when the command is polled)
         }
+
+
 
         Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "open");
         Firebase.RTDB.setString(&fbdo, OVERRIDE_PATH, "none");
@@ -229,7 +277,36 @@ void loop() {
   long dist = readDistance(trigPin, echoPin);
   long fullDist = readDistance(trigPinFull, echoPinFull);
 
-  personDetected = (dist <= TRIGGER_DISTANCE);
+// Person detection with hysteresis + consecutive no-person samples
+  // Open threshold: <= TRIGGER_DISTANCE
+  const int CLOSE_DISTANCE = TRIGGER_DISTANCE + 5; // close only when farther than open threshold
+
+
+  bool personNow = (dist <= TRIGGER_DISTANCE);      // “someone is here”
+  bool personFar = (dist > CLOSE_DISTANCE);        // “confidently gone”
+
+  // Keep lastSeen for manual override timeout/debug if needed
+  if (personNow) {
+    personLastSeenMs = millis();
+  }
+
+  // Count consecutive confident no-person readings
+  const int NO_PERSON_SAMPLE_COUNT = 3;
+  static int noPersonStreak = 0;
+  if (personFar) {
+    noPersonStreak++;
+  } else {
+    noPersonStreak = 0;
+  }
+
+  // Final debounced “person present” state:
+  // - stay present for any near detection
+  // - require N consecutive far readings before allowing “no person”
+  personDetectedRaw = personNow;
+  bool personDetectedByStreak = (noPersonStreak < NO_PERSON_SAMPLE_COUNT);
+  personDetected = personDetectedByStreak;
+
+
 
   // If manual override is active, keep the lid open and suppress automatic closing.
   if (manualOverrideActive) {
@@ -238,41 +315,61 @@ void loop() {
     }
   }
 
+  // Arm auto-close timer only when we have a stable "no person" state.
+  // This prevents the lid from getting stuck open during intermittent sensor gaps.
+  if (!personDetected) {
+    if (!closeTimerArmed) {
+      closeTimerArmed = true;
+      closeTimerStartMs = millis();
+    }
+  } else {
+    closeTimerArmed = false;
+  }
+
+
 
   // Update binLevel for the web dashboard
-  // Map fullDist (10cm = full => 100%) to (20cm or more = empty => 0%)
-  // Clamp to [0..100]. Use 999 (out of range) as empty.
+  // fullDist is the distance from the bin's "fullness" sensor.
+  // Goal: FULL_DISTANCE -> 100%, TRIGGER_DISTANCE -> 0%.
+  // Note: if the sensor fails (999), treat as empty (0%).
   int levelPercent = 0;
+  // fullDist mapping:
+  // - fullDist <= FULL_DISTANCE  => 100% (bin is full)
+  // - fullDist >= TRIGGER_DISTANCE => 0% (bin is empty)
   if (fullDist >= 999) {
     levelPercent = 0;
   } else {
-    // progress increases as fullDist decreases
-    long span = (long)TRIGGER_DISTANCE - (long)FULL_DISTANCE;
-    if (span <= 0) span = 1;
     long clamped = fullDist;
     if (clamped < FULL_DISTANCE) clamped = FULL_DISTANCE;
     if (clamped > TRIGGER_DISTANCE) clamped = TRIGGER_DISTANCE;
 
-    // 0..100 where fullDist==FULL_DISTANCE => 100, fullDist==TRIGGER_DISTANCE => 0
-    levelPercent = (int)(( (TRIGGER_DISTANCE - clamped) * 100L ) / span);
+    // percent = (clamped - TRIGGER) / (FULL - TRIGGER) * 100
+    long denom = (long)FULL_DISTANCE - (long)TRIGGER_DISTANCE; // negative
+    if (denom == 0) denom = -1;
+
+    levelPercent = (int)(((long)clamped - (long)TRIGGER_DISTANCE) * 100L / denom);
     if (levelPercent < 0) levelPercent = 0;
     if (levelPercent > 100) levelPercent = 100;
   }
 
+
   if (millis() - lastBinLevelPush >= BIN_LEVEL_PUSH_INTERVAL_MS) {
-    lastBinLevelPush = millis();
-    Firebase.RTDB.setInt(&fbdo, "trashbin/binLevel", levelPercent);
+    // Deadband: reduce RTDB churn when small sensor noise occurs
+    if (abs(levelPercent - lastPushedBinLevel) >= BIN_LEVEL_DEADBAND) {
+      lastBinLevelPush = millis();
+      Firebase.RTDB.setInt(&fbdo, "trashbin/binLevel", levelPercent);
+      lastPushedBinLevel = levelPercent;
+    }
   }
 
-  // Keep lid status synced for the web UI
-  // (avoid writing too frequently; only update when behavior changes is ideal,
-  // but this is simple and still rate-limited by our loop delay).
-  // lidOpen true => open else closed.
-  if (lidOpen) {
-    Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "open");
-  } else {
-    Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", "closed");
+
+  // Keep lid status synced for the web UI, but only when it changes
+  static bool lastPushedLidOpen = false;
+  if (lidOpen != lastPushedLidOpen) {
+    lastPushedLidOpen = lidOpen;
+    Firebase.RTDB.setString(&fbdo, "trashbin/lidStatus", lidOpen ? "open" : "closed");
   }
+
 
   // 2. BIN FULL LOGIC
 
@@ -305,19 +402,8 @@ void loop() {
     digitalWrite(ledPin, LOW);
   }
 
-  // Increment lidOpenCount whenever the blue LED turns on steadily (not blinking)
-  if (ledSteadyOn && !lastLidLedSteadyOn) {
-    if (millis() - lidLedLastChangeMs > 1000) {
-      lidLedLastChangeMs = millis();
-      int current = 0;
-      if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
-        current = fbdo.intData();
-      }
-      current++;
-      Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
-    }
-  }
-  lastLidLedSteadyOn = ledSteadyOn;
+
+
 
   // 4. CORE BEHAVIOR
 
@@ -345,16 +431,33 @@ void loop() {
     if (!lidOpen) {
       moveLid(OPEN_DIR); // Clockwise Open
       lidOpen = true;
+
+      // Count every closed -> open transition (sensor-driven) (debounced)
+      unsigned long nowMs = millis();
+      if (nowMs - lastLidOpenEdgeMs >= lidOpenEdgeCooldownMs) {
+        int current = 0;
+        if (Firebase.RTDB.getInt(&fbdo, "trashbin/lidOpenCount")) {
+          current = fbdo.intData();
+        }
+        current++;
+        Firebase.RTDB.setInt(&fbdo, "trashbin/lidOpenCount", current);
+        lastLidOpenEdgeMs = nowMs;
+      }
     }
   } 
   
   else {
+    // If lid is open, only close after we've had stable "no person" for a bit.
     if (lidOpen) {
-      moveLid(CLOSE_DIR); // Counter-Clockwise Close
-      lidOpen = false;
-      waitingToSpray = true; 
-      closeTime = millis();
+      if (closeTimerArmed && (millis() - closeTimerStartMs >= LID_CLOSE_DELAY_MS)) {
+        moveLid(CLOSE_DIR); // Counter-Clockwise Close
+        lidOpen = false;
+        waitingToSpray = true;
+        closeTime = millis();
+        closeTimerArmed = false;
+      }
     }
+
 
     if (waitingToSpray) {
       if (millis() - closeTime >= SPRAY_DELAY) {

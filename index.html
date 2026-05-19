@@ -12,12 +12,28 @@
   <header class="app-header">
     <div class="header-inner">
       <h1>Trashbin Monitor</h1>
-      <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">
-        <span class="theme-icon" aria-hidden="true">☾</span>
-        <span class="theme-text">Dark</span>
-      </button>
+
+      <div class="header-actions">
+        <!-- Bin full indicator -->
+        <button
+          type="button"
+          id="binFullBell"
+          class="bell-btn"
+          aria-label="Bin full"
+          aria-pressed="false"
+          title="Bin full"
+        >
+          <span class="bell-icon" aria-hidden="true">🔔</span>
+        </button>
+
+        <button type="button" class="theme-btn" id="themeToggle" aria-label="Toggle theme">
+          <span class="theme-icon" aria-hidden="true">☾</span>
+          <span class="theme-text">Dark</span>
+        </button>
+      </div>
     </div>
   </header>
+
 
   <script>
     (function () {
@@ -104,8 +120,9 @@
         <h3 id="overrideStatus">none</h3>
       </div>
 
-      <button onclick="openLid()">Open Lid</button>
-      <button onclick="closeLid()">Close Lid</button>
+      <button type="button" id="openLidBtn">Open Lid</button>
+      <button type="button" id="closeLidBtn">Close Lid</button>
+
     </div>
 
     <!-- Debug structure -->
