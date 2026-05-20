@@ -333,21 +333,24 @@ void loop() {
   // Goal: FULL_DISTANCE -> 100%, TRIGGER_DISTANCE -> 0%.
   // Note: if the sensor fails (999), treat as empty (0%).
   int levelPercent = 0;
-  // fullDist mapping:
-  // - fullDist <= FULL_DISTANCE  => 100% (bin is full)
-  // - fullDist >= TRIGGER_DISTANCE => 0% (bin is empty)
+
+  // Map distance -> fullness % using stable linear interpolation.
+  // When the bin is EMPTY: fullDist should be >= TRIGGER_DISTANCE => 0%
+  // When the bin is FULL : fullDist should be <= FULL_DISTANCE    => 100%
   if (fullDist >= 999) {
     levelPercent = 0;
   } else {
-    long clamped = fullDist;
-    if (clamped < FULL_DISTANCE) clamped = FULL_DISTANCE;
-    if (clamped > TRIGGER_DISTANCE) clamped = TRIGGER_DISTANCE;
+    long d = fullDist;
+    if (d <= FULL_DISTANCE) d = FULL_DISTANCE;
+    if (d >= TRIGGER_DISTANCE) d = TRIGGER_DISTANCE;
 
-    // percent = (clamped - TRIGGER) / (FULL - TRIGGER) * 100
-    long denom = (long)FULL_DISTANCE - (long)TRIGGER_DISTANCE; // negative
-    if (denom == 0) denom = -1;
+    long range = (long)TRIGGER_DISTANCE - (long)FULL_DISTANCE; // positive
+    if (range <= 0) range = 1;
 
-    levelPercent = (int)(((long)clamped - (long)TRIGGER_DISTANCE) * 100L / denom);
+    // fraction = (TRIGGER - d) / (TRIGGER - FULL)  => 0..1
+    long fractionNumerator = (long)TRIGGER_DISTANCE - d; // 0..range
+    levelPercent = (int)(fractionNumerator * 100L / range);
+
     if (levelPercent < 0) levelPercent = 0;
     if (levelPercent > 100) levelPercent = 100;
   }

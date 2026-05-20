@@ -1,6 +1,4 @@
-- [x] Add bell icon UI to header (index.html)
-- [x] Add bell/button + full-state CSS (style.css)
-- [x] Add bin-full detection from Firebase binLevel and toggle bell state (app.js)
+- [x] Fix binLevel mapping (ESP32) so empty is near 0% instead of ~40%
 - [ ] Quick manual test: confirm bell turns on when binLevel >= 90 and turns off below
-
-
+- [ ] Verify Firebase trashbin/binLevel matches physical empty/full after firmware update
+- [ ] If still wrong, add Serial debug prints for fullDist + computed levelPercent and re-tune FULL_DISTANCE/TRIGGER_DISTANCE
