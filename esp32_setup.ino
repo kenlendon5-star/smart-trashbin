@@ -357,11 +357,20 @@ void loop() {
 
 
   if (millis() - lastBinLevelPush >= BIN_LEVEL_PUSH_INTERVAL_MS) {
+    // DEBUG: always print raw sensor + computed level so we can tune mapping.
+    Serial.print("fullDist=");
+    Serial.print(fullDist);
+    Serial.print(" -> levelPercent=");
+    Serial.println(levelPercent);
+
     // Deadband: reduce RTDB churn when small sensor noise occurs
     if (abs(levelPercent - lastPushedBinLevel) >= BIN_LEVEL_DEADBAND) {
       lastBinLevelPush = millis();
       Firebase.RTDB.setInt(&fbdo, "trashbin/binLevel", levelPercent);
       lastPushedBinLevel = levelPercent;
+    } else {
+      // still update timestamp to avoid spamming prints faster than BIN_LEVEL_PUSH_INTERVAL_MS
+      lastBinLevelPush = millis();
     }
   }
 
